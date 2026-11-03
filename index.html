@@ -450,7 +450,31 @@ function renderBoardCanvas(board,scale){
  g.translate(-x0,-y0);for(const o of a)drawObj(g,o);return c}
 function download(url,name){const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove()}
 $('#expPng').onclick=()=>{if(editing)ed.blur();const c=renderBoardCanvas(B(),2);c.toBlob(b=>{const u=URL.createObjectURL(b);download(u,B().name+'.png');setTimeout(()=>URL.revokeObjectURL(u),2000)})};
-$('#expPdf').onclick=()=>{if(editing)ed.blur();const pa=$('#printarea');pa.innerHTML='';for(const b of S.boards){const im=new Image();im.src=renderBoardCanvas(b,1.5).toDataURL('image/png');pa.appendChild(im)}setTimeout(()=>window.print(),300)};
+function b64ToBytes(d){const t=atob(d.split(',')[1]);const u=new Uint8Array(t.length);for(let i=0;i<t.length;i++)u[i]=t.charCodeAt(i);return u}
+function buildPdf(pages){
+ const enc=new TextEncoder(),chunks=[],offs=[];let len=0;
+ const add=x=>{const u=typeof x==='string'?enc.encode(x):x;chunks.push(u);len+=u.length};
+ const obj=(id,fn)=>{offs[id]=len;add(id+' 0 obj\n');fn();add('endobj\n')};
+ const n=pages.length,total=3+3*n;
+ add('%PDF-1.4\n%âãÏÓ\n');
+ obj(1,()=>add('<< /Type /Catalog /Pages 2 0 R >>\n'));
+ obj(2,()=>add('<< /Type /Pages /Count '+n+' /Kids ['+pages.map((_,i)=>(3+3*i)+' 0 R').join(' ')+'] >>\n'));
+ pages.forEach((p,i)=>{const pg=3+3*i,ct=pg+1,im=pg+2,W=p.w.toFixed(2),H=p.h.toFixed(2);
+  obj(pg,()=>add('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+W+' '+H+'] /Resources << /XObject << /Im0 '+im+' 0 R >> >> /Contents '+ct+' 0 R >>\n'));
+  const cs='q '+W+' 0 0 '+H+' 0 0 cm /Im0 Do Q';
+  obj(ct,()=>add('<< /Length '+cs.length+' >>\nstream\n'+cs+'\nendstream\n'));
+  obj(im,()=>{add('<< /Type /XObject /Subtype /Image /Width '+p.pw+' /Height '+p.ph+' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length '+p.jpg.length+' >>\nstream\n');add(p.jpg);add('\nendstream\n')})});
+ const xr=len;let x='xref\n0 '+total+'\n0000000000 65535 f \n';
+ for(let i=1;i<total;i++)x+=String(offs[i]).padStart(10,'0')+' 00000 n \n';
+ add(x+'trailer\n<< /Size '+total+' /Root 1 0 R >>\nstartxref\n'+xr+'\n%%EOF');
+ return new Blob(chunks,{type:'application/pdf'})}
+$('#expPdf').onclick=()=>{
+ if(editing)ed.blur();
+ const pages=S.boards.map(b=>{
+  const c=renderBoardCanvas(b,1.5);
+  let k=.5;const mx=14000/Math.max(c.width,c.height);if(k>mx)k=mx;
+  return{pw:c.width,ph:c.height,w:c.width*k,h:c.height*k,jpg:b64ToBytes(c.toDataURL('image/jpeg',.92))}});
+ const u=URL.createObjectURL(buildPdf(pages));download(u,'beyaz-tahta.pdf');setTimeout(()=>URL.revokeObjectURL(u),3000)};
 $('#mSave').onclick=()=>{const blob=new Blob([JSON.stringify({v:1,S,imgData})],{type:'application/json'});const u=URL.createObjectURL(blob);download(u,'beyaz-tahta-proje.json');setTimeout(()=>URL.revokeObjectURL(u),2000);$('#menu').classList.remove('open')};
 $('#mOpen').onclick=()=>{$('#fileProj').click();$('#menu').classList.remove('open')};
 $('#fileProj').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(!j.S||!j.S.boards)throw 0;S=j.S;Object.assign(imgData,j.imgData||{});S.cur=0;buildTabs();switchBoard(0)}catch(err){alert('Geçersiz proje dosyası.')}};r.readAsText(f);e.target.value=''};
